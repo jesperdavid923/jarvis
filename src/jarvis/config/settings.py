@@ -47,14 +47,16 @@ class Settings(BaseSettings):
     ollama_host: str = Field(default="http://127.0.0.1:11434", alias="OLLAMA_HOST")
     model: str = Field(default="jarvis", alias="JARVIS_MODEL")
     embed_model: str = Field(default="nomic-embed-text:v1.5", alias="JARVIS_EMBED_MODEL")
-    num_ctx: int = Field(default=8192, alias="JARVIS_NUM_CTX")
+    num_ctx: int = Field(default=4096, alias="JARVIS_NUM_CTX")
     temperature: float = Field(default=0.4, alias="JARVIS_TEMPERATURE")
+    ollama_num_threads: int = Field(default=10, alias="OLLAMA_NUM_THREADS")
+    ollama_num_parallel: int = Field(default=1, alias="OLLAMA_NUM_PARALLEL")
 
     # --- STT ---
-    stt_model: str = Field(default="large-v3-turbo", alias="JARVIS_STT_MODEL")
-    stt_device: Literal["cuda", "cpu", "auto"] = Field(default="auto", alias="JARVIS_STT_DEVICE")
-    stt_compute_type: str = Field(default="float16", alias="JARVIS_STT_COMPUTE_TYPE")
-    wake_word: str = Field(default="hey_jarvis", alias="JARVIS_WAKE_WORD")
+    stt_model: str = Field(default="small", alias="JARVIS_STT_MODEL")
+    stt_device: Literal["cuda", "cpu", "auto"] = Field(default="cpu", alias="JARVIS_STT_DEVICE")
+    stt_compute_type: str = Field(default="int8", alias="JARVIS_STT_COMPUTE_TYPE")
+    wake_word: str = Field(default="", alias="JARVIS_WAKE_WORD")
     ptt_hotkey: str = Field(default="F8", alias="JARVIS_PTT_HOTKEY")
 
     # --- TTS ---
@@ -133,6 +135,8 @@ class Settings(BaseSettings):
             ("bridge", f"{self.bridge_host}:{self.bridge_port}"),
             ("hud_enabled", str(self.hud_enabled)),
             ("memory_topk", str(self.memory_topk)),
+            ("ollama_num_threads", str(self.ollama_num_threads)),
+            ("ollama_num_parallel", str(self.ollama_num_parallel)),
         )
 
 

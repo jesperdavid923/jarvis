@@ -168,12 +168,14 @@ ok "Python venv ready at .venv/ (Python 3.11)"
 if uv pip install --python .venv/bin/python "openwakeword>=0.6.0" 2>/dev/null; then
     ok "wake-word ([wake] extra) installed"
 else
-    warn "[wake] extra failed to install — push-to-talk (\$JARVIS_PTT_HOTKEY, default F8) still works"
+    printf "  ${YELLOW}[!]${NC}  ${YELLOW}openwakeword build failed — this is expected on CPU-only / Python 3.12+.${NC}\n"
+    printf "  ${YELLOW}[!]${NC}  ${YELLOW}Wake-word detection disabled. Push-to-Talk (F8) will be used instead.${NC}\n"
+    printf "  ${YELLOW}[!]${NC}  ${YELLOW}Jarvis will catch the ImportError at runtime and fall back gracefully.${NC}\n"
 fi
 
 # ====================================================================== #
 step "5/11" "Pulling Ollama models"
-ollama_cli pull qwen2.5:14b-instruct-q4_K_M || warn "Pull failed — check VRAM / network"
+ollama_cli pull qwen2.5:7b-instruct-q4_K_M || warn "Pull failed — check network"
 ollama_cli pull nomic-embed-text:v1.5 || warn "Embed model pull failed"
 ok "models pulled"
 
@@ -223,10 +225,88 @@ fi
 .venv/bin/jarvis vault init 2>/dev/null && ok "vault initialised" || warn "vault init skipped (keyring may need dbus)"
 
 # ====================================================================== #
-step "9/11" "Installing systemd user service"
+step "9/11" "Installing systemd user service + fallback runner"
 SVC_DIR="${HOME}/.config/systemd/user"
 mkdir -p "$SVC_DIR"
 cp services/systemd/jarvis-core.service "$SVC_DIR/"
+
+# Always generate the fallback runner script (useful even when systemd works).
+RUNSH="scripts/run.sh"
+cat > "$RUNSH" <<'RUNEOF'
+#!/usr/bin/env bash
+# ──────────────────────────────────────────────────────────
+#  Jarvis – Fallback Runner (no systemd required)
+#  Starts Ollama (if needed) and jarvis-core sequentially.
+#  Usage:  ./scripts/run.sh
+# ──────────────────────────────────────────────────────────
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+
+ok()   { printf "  ${GREEN}\xe2\x9c\x93${NC}  %s\n" "$*"; }
+warn() { printf "  ${YELLOW}!${NC}  %s\n" "$*"; }
+fail() { printf "  ${RED}\xe2\x9c\x97${NC}  %s\n" "$*"; exit 1; }
+
+# Load .env if present.
+if [ -f .env ]; then
+    set -a; source .env; set +a
+    ok "Loaded .env"
+fi
+
+# Resolve Ollama host.
+OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+export OLLAMA_HOST
+
+# Export CPU tuning defaults (can be overridden via .env).
+export OLLAMA_NUM_THREADS="${OLLAMA_NUM_THREADS:-10}"
+export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"
+
+# ── Step 1: Ensure Ollama is running ──
+printf "\n${BOLD}${CYAN}[1/3]${NC} Checking Ollama...\n"
+if curl -sf --max-time 2 "$OLLAMA_HOST" >/dev/null 2>&1; then
+    ok "Ollama already reachable at $OLLAMA_HOST"
+else
+    if command -v ollama &>/dev/null; then
+        warn "Starting ollama serve in the background..."
+        nohup ollama serve >/dev/null 2>&1 &
+        sleep 3
+        if curl -sf --max-time 2 "$OLLAMA_HOST" >/dev/null 2>&1; then
+            ok "Ollama started"
+        else
+            fail "Ollama failed to start. Check 'ollama serve' manually."
+        fi
+    else
+        fail "Ollama not found. Run ./scripts/install.sh first."
+    fi
+fi
+
+# ── Step 2: Activate venv ──
+printf "\n${BOLD}${CYAN}[2/3]${NC} Activating Python environment...\n"
+if [ ! -f .venv/bin/activate ]; then
+    fail ".venv not found. Run ./scripts/install.sh first."
+fi
+source .venv/bin/activate
+ok "venv activated ($(python --version))"
+
+# ── Step 3: Launch jarvis-core ──
+printf "\n${BOLD}${CYAN}[3/3]${NC} Starting jarvis-core...\n"
+LOG_FILE="${HOME}/.jarvis/state/jarvis-core.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+
+# Kill any existing jarvis-core process.
+if pgrep -f 'jarvis-core' >/dev/null 2>&1; then
+    warn "Stopping existing jarvis-core (pid: $(pgrep -f 'jarvis-core' | head -1))..."
+    pkill -f 'jarvis-core' 2>/dev/null || true
+    sleep 1
+fi
+
+printf "\n${BOLD}${GREEN}Systems online.${NC}\n"
+exec jarvis-core 2>&1 | tee -a "$LOG_FILE"
+RUNEOF
+chmod +x "$RUNSH"
+ok "fallback runner generated at $RUNSH"
 
 if [[ "$SYSTEMD_USER_OK" == "1" ]]; then
     systemctl --user daemon-reload
@@ -238,8 +318,7 @@ else
     warn "To enable systemd in WSL, add this to /etc/wsl.conf and run 'wsl --shutdown':"
     warn "    [boot]"
     warn "    systemd=true"
-    warn "Then re-run ./scripts/install.sh and it will enable the service."
-    warn "As a fallback, install.sh will launch jarvis-core via nohup in step 11/11."
+    ok "Fallback: run ${BOLD}./scripts/run.sh${NC} to start Jarvis without systemd."
 fi
 
 # ====================================================================== #
