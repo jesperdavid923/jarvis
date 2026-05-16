@@ -34,7 +34,9 @@ class WakeWordDetector:
             log.warning(
                 "wake_unavailable",
                 reason=str(exc),
-                hint="Install the [wake] extra: uv pip install '.[wake]' (Python 3.11 required)",
+                hint="openwakeword not installed. Falling back to Push-To-Talk (F8).",
+                fallback="PTT",
+                hotkey=get_settings().ptt_hotkey,
             )
             self._unavailable = True
             return

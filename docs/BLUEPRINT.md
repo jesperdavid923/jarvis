@@ -141,15 +141,21 @@ shell operations without a confirmation phrase.
 
 ### 2.3 LLM — Ollama + Modelfile
 
-Default model: `qwen2.5:14b-instruct-q4_K_M` (fits in 12 GB VRAM, strong tool
-use, multilingual). Alternative tiers documented in `docs/MODELS.md`.
+Default model: `qwen2.5:7b-instruct-q4_K_M` (~5 GB on disk, runs well on
+CPU-only systems with 16 GB RAM). Alternative tiers documented in
+`docs/MODELS.md`.
 
 The `Modelfile` in `models/Jarvis.Modelfile` baselines:
-- `FROM qwen2.5:14b-instruct-q4_K_M`
-- `PARAMETER num_ctx 8192`
+- `FROM qwen2.5:7b-instruct-q4_K_M`
+- `PARAMETER num_ctx 4096`
 - `PARAMETER temperature 0.4`
 - `PARAMETER stop "<|im_end|>"`
+- `PARAMETER num_predict 512`
 - `SYSTEM` block injects the Jarvis persona + tool schema reminders.
+
+CPU threading is controlled via environment variables:
+- `OLLAMA_NUM_THREADS` — set to physical core count (default 10 for i5-1235U).
+- `OLLAMA_NUM_PARALLEL=1` — one request at a time to avoid RAM pressure.
 
 ### 2.4 Tools — `jarvis.tools`
 
@@ -231,6 +237,7 @@ DPAPI-protected `%LOCALAPPDATA%\jarvis\bridge.key` and the WSL vault.
 2.6s   tool result → 2.4 kB JSON of events
 2.65s  agent → Ollama (second call) with tool result
 2.75s  LLM streams: "Imorgon har du tre möten…"
+       (timings above measured on GPU; CPU-only will be ~3–5× slower)
 2.80s  first sentence flushed → Piper → speakers (first audio: ~0.55s after stt end)
 3.4s   answer complete, episodic memory written
 ```
@@ -265,7 +272,7 @@ Measured on RTX 4070 (12 GB), Ryzen 9 7900X, NVMe:
 | Wake-word → mic   | <50 ms  | openwakeword keeps a 2 s rolling buffer           |
 | STT (1.5 s audio) | <250 ms | large-v3-turbo, beam_size=1, vad_filter=False     |
 | Memory retrieval  | <30 ms  | Chroma cosine search, K=6, ~10 k vectors          |
-| LLM first token   | <300 ms | qwen2.5:14b q4_K_M, num_ctx=8192                  |
+| LLM first token   | <300 ms | qwen2.5:7b q4_K_M, num_ctx=4096                   |
 | LLM tokens/s      | ≥35     | streaming, GPU offload all layers                 |
 | TTS first byte    | <80 ms  | Piper, sv_SE-nst-medium                           |
 | End-to-end (no tool) | <800 ms | wake → first audio out                         |
@@ -289,11 +296,13 @@ cd ~/jarvis && ./scripts/install.sh
 2. `apt-get install` system deps (portaudio, ffmpeg, libegl, etc.).
 3. `curl -fsSL https://ollama.com/install.sh | sh` if missing.
 4. `uv sync` to materialize the Python env into `.venv`.
-5. `ollama pull qwen2.5:14b-instruct-q4_K_M` + `nomic-embed-text`.
+5. `ollama pull qwen2.5:7b-instruct-q4_K_M` + `nomic-embed-text`.
 6. `ollama create jarvis -f models/Jarvis.Modelfile`.
 7. Download Piper voices (sv_SE + en_US) into `assets/voices/`.
 8. Generate vault key + bridge HMAC key.
 9. Install `~/.config/systemd/user/jarvis-core.service` and enable it.
+   If systemd is not available (common in WSL without `[boot] systemd=true`),
+   generates `scripts/run.sh` as a bulletproof fallback runner.
 10. Cross-call `install.ps1` via `powershell.exe` to register the Windows
     bridge as a Task Scheduler logon task.
 11. `systemctl --user start jarvis-core` and tail logs for 5 s.

@@ -1,16 +1,17 @@
 # Recommended Models by VRAM
 
 All models are pulled via `ollama pull <name>`. The Jarvis Modelfile
-defaults to `qwen2.5:14b-instruct-q4_K_M`. Change `FROM` in
-`models/Jarvis.Modelfile` and rebuild with `ollama create jarvis -f ...`.
+defaults to `qwen2.5:7b-instruct-q4_K_M` (optimized for CPU-only / 16 GB
+RAM systems). Change `FROM` in `models/Jarvis.Modelfile` and rebuild
+with `ollama create jarvis -f ...`.
 
 ## LLM (chat / reasoning / tool use)
 
 | VRAM     | Model                              | Size  | Notes                         |
 |----------|------------------------------------|-------|-------------------------------|
 | ≥ 24 GB  | `qwen2.5:32b-instruct-q4_K_M`     | ~20 GB| Best quality, great tool use  |
-| ≥ 12 GB  | `qwen2.5:14b-instruct-q4_K_M`     | ~9 GB | **Default**. Strong all-round |
-| ≥ 8 GB   | `qwen2.5:7b-instruct-q4_K_M`      | ~5 GB | Fast, good for most tasks     |
+| ≥ 12 GB  | `qwen2.5:14b-instruct-q4_K_M`     | ~9 GB | Strong all-round (GPU)        |
+| ≥ 8 GB   | `qwen2.5:7b-instruct-q4_K_M`      | ~5 GB | **Default**. Fast, CPU-friendly |
 | ≥ 6 GB   | `phi3:mini-4k-instruct`            | ~3.8 GB| Smaller but capable          |
 | ≤ 4 GB   | `qwen2.5:3b-instruct-q4_K_M`      | ~2 GB | Lightweight, limited tools    |
 
@@ -30,3 +31,13 @@ defaults to `qwen2.5:14b-instruct-q4_K_M`. Change `FROM` in
 | CPU only | `small`        | Acceptable, ~1.5× real-time       |
 
 STT runs concurrently with the LLM; plan VRAM accordingly.
+
+## CPU-Only Notes
+
+On CPU-only systems (no NVIDIA GPU), use:
+- **LLM**: `qwen2.5:7b-instruct-q4_K_M` with `num_ctx=4096`
+- **STT**: `small` model, `device=cpu`, `compute_type=int8`
+- **Env**: `OLLAMA_NUM_THREADS=<physical cores>`, `OLLAMA_NUM_PARALLEL=1`
+
+For an Intel i5-1235U (10C/12T, 16 GB RAM), these defaults are baked into
+`.env.example` and `services/systemd/jarvis-core.service`.
